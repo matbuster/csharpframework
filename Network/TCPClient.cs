@@ -7,61 +7,28 @@ using System.Collections;
 
 namespace csharpFramework.Network
 {
-	/// <summary>
-	/// Summary description for Class1.
-	/// </summary>
-	class TCPClient
+    /** \brief tcp client implementation
+     */ 
+	class TcpClient
 	{
-		/// <summary>
-		/// The main entry point for the application.
-		/// </summary>
-		[STAThread]
-		static void Main(string[] args)
-		{
-			TCPClient client = null;
-			client = new TCPClient("SatyaTest.cfg\r\n");
-			client = new TCPClient("SatyaTest1.cfg\r\n");
-			client = new TCPClient("SatyaTest2.cfg\r\n");
-			client = new TCPClient("SatyaTest3.cfg\r\n");
-			client = new TCPClient("SatyaTest4.cfg\r\n");
-			client = new TCPClient("SatyaTest5.cfg\r\n");
-		}
+        private String data;
 
-		private String m_fileName=null;
-		public TCPClient(String fileName)
+        /** \brief constructor implementation
+         * \param [in]
+         */ 
+		public TcpClient(String data)
 		{
-			m_fileName=fileName;
+            this.data = data;
 			Thread t = new Thread(new ThreadStart(ClientThreadStart));
 			t.Start();
 		}
 
+        /** \brief thread start to send data trough tcp connection */
 		private void ClientThreadStart()
 		{
-			Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp );
-			clientSocket.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"),31001));
-
-			// Send the file name.
-			clientSocket.Send(Encoding.ASCII.GetBytes(m_fileName));
-			
-			// Receive the length of the filename.
-			byte [] data = new byte[128];
-			clientSocket.Receive(data);
-			int length=BitConverter.ToInt32(data,0);
-
-			clientSocket.Send(Encoding.ASCII.GetBytes(m_fileName+":"+"this is a test\r\n"));
-
-			clientSocket.Send(Encoding.ASCII.GetBytes(m_fileName+":"+"THIS IS "));
-			clientSocket.Send(Encoding.ASCII.GetBytes("ANOTHRER "));
-			clientSocket.Send(Encoding.ASCII.GetBytes("TEST."));
-			clientSocket.Send(Encoding.ASCII.GetBytes("\r\n"));
-			clientSocket.Send(Encoding.ASCII.GetBytes(m_fileName+":"+"TEST.\r\n"+m_fileName+":"+"TEST AGAIN.\r\n"));
-			clientSocket.Send(Encoding.ASCII.GetBytes("[EOF]\r\n"));
-
-			// Get the total length
-			clientSocket.Receive(data);
-			length=BitConverter.ToInt32(data,0);
-			clientSocket.Close();
+            TcpClientObject client = new TcpClientObject();
+            client.Send(this.data);
+            client.Close();
 		}
-
 	}
 }

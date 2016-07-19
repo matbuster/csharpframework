@@ -7,6 +7,7 @@ using System.Threading;
 using System.Net.Sockets;
 using System.Collections;
 using System.IO;
+using csharpFramework.FileIO;
 
 namespace csharpFramework.Network
 {
@@ -32,6 +33,8 @@ namespace csharpFramework.Network
         private Thread m_serverThread = null;
         private Thread m_purgingThread = null;
         private ArrayList m_socketListenersList = null;
+
+        private TcpReceivedObject m_bindedObject = null;
 
         /** @brief constructors
          * instanciate a TCPSErver on ip 127.0.0.1 : port 31001
@@ -74,8 +77,10 @@ namespace csharpFramework.Network
         {
             try
             {
+                cLog.Log("[TcpServer]\t[Init]\tIp adress : " + ipNport.Address, cLog.Prio.Info);
+                cLog.Log("[TcpServer]\t[Init]\tPort : " + ipNport.Port, cLog.Prio.Info);
+
                 m_server = new TcpListener(ipNport);
-                // Create a directory for storing client sent files.
                 if (!Directory.Exists(TCPSocketListener.DEFAULT_FILE_STORE_LOC))
                 {
                     Directory.CreateDirectory(TCPSocketListener.DEFAULT_FILE_STORE_LOC);
@@ -84,30 +89,51 @@ namespace csharpFramework.Network
             catch (Exception e)
             {
                 m_server = null;
+                cLog.Log("[TcpServer]\t[Init]\tAn exception occur when initialized tcp server" + e.Message, cLog.Prio.Info);
             }
+        }
+
+        /**
+         * \brief bind a tcp received object
+         * \param [in] tcp received object
+         */ 
+        public void BindObject(TcpReceivedObject obj)
+        {
+            this.m_bindedObject = obj;
         }
 
         /** \brief Method that starts TCP/IP Server.
          */ 
         public void StartServer()
         {
-            if (m_server != null)
+            try
             {
-                // Create a ArrayList for storing SocketListeners before
-                // starting the server.
-                m_socketListenersList = new ArrayList();
+                if (m_server != null)
+                {
+                    cLog.Log("[TcpServer]\t[StartServer]\tStarting server", cLog.Prio.Info);
 
-                // Start the Server and start the thread to listen client 
-                // requests.
-                m_server.Start();
-                m_serverThread = new Thread(new ThreadStart(ServerThreadStart));
-                m_serverThread.Start();
+                    // Create a ArrayList for storing SocketListeners before
+                    // starting the server.
+                    m_socketListenersList = new ArrayList();
 
-                // Create a low priority thread that checks and deletes client
-                // SocktConnection objcts that are marked for deletion.
-                m_purgingThread = new Thread(new ThreadStart(PurgingThreadStart));
-                m_purgingThread.Priority = ThreadPriority.Lowest;
-                m_purgingThread.Start();
+                    // Start the Server and start the thread to listen client 
+                    // requests.
+                    m_server.Start();
+                    m_serverThread = new Thread(new ThreadStart(ServerThreadStart));
+                    m_serverThread.Start();
+
+                    // Create a low priority thread that checks and deletes client
+                    // SocktConnection objcts that are marked for deletion.
+                    m_purgingThread = new Thread(new ThreadStart(PurgingThreadStart));
+                    m_purgingThread.Priority = ThreadPriority.Lowest;
+                    m_purgingThread.Start();
+
+                    cLog.Log("[TcpServer]\t[StartServer]\tStart server successsully", cLog.Prio.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                cLog.Log("[TcpServer]\t[StartServer]\tStart server raised an exception : " + ex.Message, cLog.Prio.Exception);
             }
         }
 
@@ -115,41 +141,51 @@ namespace csharpFramework.Network
          */ 
         public void StopServer()
         {
-            if (m_server != null)
+            try
             {
-                // It is important to Stop the server first before doing
-                // any cleanup. If not so, clients might being added as
-                // server is running, but supporting data structures
-                // (such as m_socketListenersList) are cleared. This might
-                // cause exceptions.
-
-                // Stop the TCP/IP Server.
-                m_stopServer = true;
-                m_server.Stop();
-
-                // Wait for one second for the the thread to stop.
-                m_serverThread.Join(1000);
-
-                // If still alive; Get rid of the thread.
-                if (m_serverThread.IsAlive)
+                if (m_server != null)
                 {
-                    m_serverThread.Abort();
+                    cLog.Log("[TcpServer]\t[StopServer]\tStopping server", cLog.Prio.Info);
+
+                    // It is important to Stop the server first before doing
+                    // any cleanup. If not so, clients might being added as
+                    // server is running, but supporting data structures
+                    // (such as m_socketListenersList) are cleared. This might
+                    // cause exceptions.
+
+                    // Stop the TCP/IP Server.
+                    m_stopServer = true;
+                    m_server.Stop();
+
+                    // Wait for one second for the the thread to stop.
+                    m_serverThread.Join(1000);
+
+                    // If still alive; Get rid of the thread.
+                    if (m_serverThread.IsAlive)
+                    {
+                        m_serverThread.Abort();
+                    }
+                    m_serverThread = null;
+
+                    m_stopPurging = true;
+                    m_purgingThread.Join(1000);
+                    if (m_purgingThread.IsAlive)
+                    {
+                        m_purgingThread.Abort();
+                    }
+                    m_purgingThread = null;
+
+                    // Free Server Object.
+                    m_server = null;
+
+                    // Stop All clients.
+                    StopAllSocketListers();
+                    cLog.Log("[TcpServer]\t[StopServer]\tStop server successsully", cLog.Prio.Info);
                 }
-                m_serverThread = null;
-
-                m_stopPurging = true;
-                m_purgingThread.Join(1000);
-                if (m_purgingThread.IsAlive)
-                {
-                    m_purgingThread.Abort();
-                }
-                m_purgingThread = null;
-
-                // Free Server Object.
-                m_server = null;
-
-                // Stop All clients.
-                StopAllSocketListers();
+            }
+            catch (Exception ex)
+            {
+                cLog.Log("[TcpServer]\t[StopServer]\tStop server raised an exception : " + ex.Message, cLog.Prio.Exception);
             }
         }
 
@@ -157,20 +193,29 @@ namespace csharpFramework.Network
          */ 
         private void StopAllSocketListers()
         {
-            foreach (TCPSocketListener socketListener
-                         in m_socketListenersList)
+            try
             {
-                socketListener.StopSocketListener();
+                foreach (TCPSocketListener socketListener
+                             in m_socketListenersList)
+                {
+                    socketListener.StopSocketListener();
+                }
+                // Remove all elements from the list.
+                m_socketListenersList.Clear();
+                m_socketListenersList = null;
             }
-            // Remove all elements from the list.
-            m_socketListenersList.Clear();
-            m_socketListenersList = null;
+            catch (Exception ex)
+            {
+                cLog.Log("[TcpServer]\t[StopAllSocketListers]\tStop all socket listeners raised an exception : " + ex.Message, cLog.Prio.Exception);
+            }
         }
 
         /** \brief TCP/IP Server Thread that is listening for clients.
          */ 
         private void ServerThreadStart()
         {
+            cLog.Log("[TcpServer]\t[ServerThreadStart]\tStart a new thread for manage tcp data", cLog.Prio.Info);
+
             // Client Socket variable;
             Socket clientSocket = null;
             TCPSocketListener socketListener = null;
@@ -181,9 +226,17 @@ namespace csharpFramework.Network
                     // Wait for any client requests and if there is any 
                     // request from any client accept it (Wait indefinitely).
                     clientSocket = m_server.AcceptSocket();
+                    cLog.Log("[TcpServer]\t[ServerThreadStart]\tAcceptSocket", cLog.Prio.Info);
 
                     // Create a SocketListener object for the client.
-                    socketListener = new TCPSocketListener(clientSocket);
+                    if (null != this.m_bindedObject)
+                    {
+                        socketListener = new TCPSocketListener(clientSocket, this.m_bindedObject);
+                    }
+                    else
+                    {
+                        socketListener = new TCPSocketListener(clientSocket);
+                    }
 
                     // Add the socket listener to an array list in a thread 
                     // safe fashon.
@@ -196,13 +249,17 @@ namespace csharpFramework.Network
 
                     // Start a communicating with the client in a different
                     // thread.
+                    cLog.Log("[TcpServer]\t[ServerThreadStart]\tStartSocketListener", cLog.Prio.Info);
                     socketListener.StartSocketListener();
                 }
                 catch (SocketException se)
                 {
                     m_stopServer = true;
+                    cLog.Log("[TcpServer]\t[ServerThreadStart]\tServerThreadStart rise an exception : " + se.Message, cLog.Prio.Exception);
                 }
             }
+
+            cLog.Log("[TcpServer]\t[ServerThreadStart]\tQuit thread", cLog.Prio.Info);
         }
 
         /** \brief Thread method for purging Client Listeneres that are marked for
@@ -213,37 +270,44 @@ namespace csharpFramework.Network
          */ 
         private void PurgingThreadStart()
         {
-            while (!m_stopPurging)
+            try
             {
-                ArrayList deleteList = new ArrayList();
-
-                // Check for any clients SocketListeners that are to be
-                // deleted and put them in a separate list in a thread sage
-                // fashon.
-                //Monitor.Enter(m_socketListenersList);
-                lock (m_socketListenersList)
+                while (!m_stopPurging)
                 {
-                    foreach (TCPSocketListener socketListener
-                                 in m_socketListenersList)
+                    ArrayList deleteList = new ArrayList();
+
+                    // Check for any clients SocketListeners that are to be
+                    // deleted and put them in a separate list in a thread sage
+                    // fashon.
+                    //Monitor.Enter(m_socketListenersList);
+                    lock (m_socketListenersList)
                     {
-                        if (socketListener.IsMarkedForDeletion())
+                        foreach (TCPSocketListener socketListener
+                                     in m_socketListenersList)
                         {
-                            deleteList.Add(socketListener);
-                            socketListener.StopSocketListener();
+                            if (socketListener.IsMarkedForDeletion())
+                            {
+                                deleteList.Add(socketListener);
+                                socketListener.StopSocketListener();
+                            }
+                        }
+
+                        // Delete all the client SocketConnection ojects which are
+                        // in marked for deletion and are in the delete list.
+                        for (int i = 0; i < deleteList.Count; ++i)
+                        {
+                            m_socketListenersList.Remove(deleteList[i]);
                         }
                     }
+                    //Monitor.Exit(m_socketListenersList);
 
-                    // Delete all the client SocketConnection ojects which are
-                    // in marked for deletion and are in the delete list.
-                    for (int i = 0; i < deleteList.Count; ++i)
-                    {
-                        m_socketListenersList.Remove(deleteList[i]);
-                    }
+                    deleteList = null;
+                    Thread.Sleep(10000);
                 }
-                //Monitor.Exit(m_socketListenersList);
-
-                deleteList = null;
-                Thread.Sleep(10000);
+            }
+            catch (Exception ex)
+            {
+                cLog.Log("[TcpServer]\t[PurgingThreadStart]\tPurgingThreadStart rise an exception : " + ex.Message, cLog.Prio.Exception);
             }
         }
     }

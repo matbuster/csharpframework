@@ -12,7 +12,6 @@ namespace csharpFramework.Network
 	public class TCPSocketListener
 	{
 		public static String DEFAULT_FILE_STORE_LOC="C:\\TCP\\";
-	
 		public enum STATE{FILE_NAME_READ, DATA_READ, FILE_CLOSED};
 
 		// Variables that are accessed by other classes indirectly.
@@ -29,14 +28,31 @@ namespace csharpFramework.Network
 		private DateTime m_lastReceiveDateTime;
 		private DateTime m_currentReceiveDateTime;
 
-        /** \brief Client Socket Listener Constructor.
+        // received object implementation
+        private TcpReceivedObject m_receivedObject = null;
+
+        /** 
+         * \brief Client Socket Listener Constructor.
+         * \param [in] associated socket
          */ 
 		public TCPSocketListener(Socket clientSocket)
 		{
 			m_clientSocket = clientSocket;
 		}
 
-        /** \brief Client SocketListener Destructor.
+        /** 
+         * \brief Client Socket Listener Constructor.
+         * \param [in] associated socket
+         * \param [in] associated received object
+         */ 
+        public TCPSocketListener(Socket clientSocket, TcpReceivedObject obj)
+        {
+            m_clientSocket = clientSocket;
+            this.m_receivedObject = obj;
+        }
+
+        /** 
+         * \brief Client SocketListener Destructor.
          */ 
 		~TCPSocketListener()
 		{
@@ -76,9 +92,15 @@ namespace csharpFramework.Network
 			{
 				try
 				{
-					size = m_clientSocket.Receive(byteBuffer);
+					//size = m_clientSocket.Receive(byteBuffer);
 					m_currentReceiveDateTime=DateTime.Now;
-					ParseReceiveBuffer(byteBuffer, size);
+					//ParseReceiveBuffer(byteBuffer, size);
+
+                    // work with the tcp object
+                    if (null != m_receivedObject)
+                    {
+                        m_receivedObject.Process(m_clientSocket);
+                    }
 				}
 				catch (SocketException se)
 				{
@@ -122,7 +144,26 @@ namespace csharpFramework.Network
 			return m_markedForDeletion;
 		}
 
-		/// <summary>
+        /**
+         * \brief Method that checks whether there are any client calls for the
+         * last 15 seconds or not. If not this client SocketListener will
+         * be closed.
+         * \param [in] object
+         */
+        private void CheckClientCommInterval(object o)
+        {
+            if (m_lastReceiveDateTime.Equals(m_currentReceiveDateTime))
+            {
+                this.StopSocketListener();
+            }
+            else
+            {
+                m_lastReceiveDateTime = m_currentReceiveDateTime;
+            }
+        }
+
+        #region unused code 
+        /// <summary>
 		/// This method parses data that is sent by a client using TCP/IP.
 		/// As per the "Protocol" between client and this Listener, client 
 		/// sends each line of information by appending "CRLF" (Carriage Return
@@ -151,8 +192,7 @@ namespace csharpFramework.Network
 					m_oneLineBuf=m_oneLineBuf.Append(data,0,lineEndIndex+2);
 					ProcessClientData(m_oneLineBuf.ToString());
 					m_oneLineBuf.Remove(0,m_oneLineBuf.Length);
-					data = data.Substring(lineEndIndex+2,
-						data.Length -lineEndIndex-2);
+					data = data.Substring(lineEndIndex+2, data.Length -lineEndIndex-2);
 				}
 				else
 				{
@@ -244,23 +284,6 @@ namespace csharpFramework.Network
 					break;
 			}
 		}
-
-		/// <summary>
-		/// Method that checks whether there are any client calls for the
-		/// last 15 seconds or not. If not this client SocketListener will
-		/// be closed.
-		/// </summary>
-		/// <param name="o"></param>
-		private void CheckClientCommInterval(object o)
-		{
-			if (m_lastReceiveDateTime.Equals(m_currentReceiveDateTime))
-			{
-				this.StopSocketListener();
-			}
-			else
-			{
-				m_lastReceiveDateTime = m_currentReceiveDateTime;
-			}
-		}
-	}
+        #endregion
+    }
 }
